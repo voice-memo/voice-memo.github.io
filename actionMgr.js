@@ -1,3 +1,6 @@
+import {genJpegBlob} from './image/genImage.js';
+import * as modal from './utils/modal.js';
+
 const delayToNotRecordKeyboardNoise = 400;
 const goBackDuration = 3000;
 const tinyDuration = 200;
@@ -125,7 +128,7 @@ export class ActionMgr {
       await this._stateMgr.trimRight();
     });
   }
-  download(fileFormat) {
+  downloadAudio() {
     const name = prompt('Name', 'audio');
     if (!name) {
       return;
@@ -134,12 +137,17 @@ export class ActionMgr {
     download(blob, name, 'webm');
   }
   async downloadMp4() {
-    const name = prompt('Name', 'result');
-    if (!name) {
-      return;
-    }
-    const blob = await this._stateMgr.convertToMp4();
-    download(blob, name, 'mp4');
+    const prevName = localStorage.getItem('name');
+
+    const namePromise = modal.prompt('Video Title', prevName);
+    const mp3BufferViewPromise = this._stateMgr.convertToMp3();
+    const name = await namePromise;
+    localStorage.setItem('name', name);
+    const jpegBlob = await genJpegBlob(name);
+    const mp3BufferView = await mp3BufferViewPromise;
+    const nameWithNoSpace = name.split(' ').join('_');
+    const blob = await this._stateMgr.convertToMp4(mp3BufferView, jpegBlob);
+    download(blob, nameWithNoSpace, 'mp4');
   }
 
   async _handleReplayGracefully(func, doNotRestartReplayer) {

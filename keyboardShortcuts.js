@@ -52,7 +52,7 @@ export class KeyboardShortcuts {
       actionMgr.delete();
     });
     _hotkeys(`${cmdKeyString()}+s`, _ => {
-      actionMgr.download();
+      actionMgr.downloadAudio();
     });
     // _hotkeys(`d`, _ => {
     //   actionMgr.denoise();
