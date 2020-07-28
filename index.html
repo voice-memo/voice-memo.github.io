@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>Vienna</title>
+    <!-- <link rel="icon" type="image/png" sizes="16x16" href="./lib/favicon-16x16.png"> -->
+    <link href="./index.css" rel="stylesheet" type="text/css" />
+    <!-- <script type="text/javascript" src="lib/paper-full.js"></script> -->
+    <script type="text/javascript" src="./lib/hotkeys.js"></script>
+    <!-- <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.8.3/dist/ffmpeg.min.js"></script> -->
+
+    <script type='module' src="./indexMain.js"></script>
+  </head>
+  <body>
+    <div id='recorder-control'>
+      <button id='microphone-record'>◉ Record (enter)</button>
+      <button id='preview-and-record'>Preview last 3s & ◉ (\)</button>
+    </div>
+    <canvas id="wave-form-canvas" width="720" height="420" style='background-color:black;'></canvas>
+    <div id='replayer-control'>
+      <button id='go-to-previous-pause'>⇦ Previous gap (p)</button>
+      <button id='go-to-next-pause'>⇨ Next gap (n)</button>
+      <button id='replay-recording'>▶ Replay (space)</button>
+      <span id='current-time'>0s</span>
+    </div>
+    <div id='microphone-recordings'>
+    </div>
+    <div>
+      <button id='convert-to-mp4' style='display: none;'>Save as mp4 video (v)</button>
+    </div>
+    <div>
+      <input id='audio-file-input' type="file" accept="audio/webm"/>
+    </div>
+  </body>
+</html>
