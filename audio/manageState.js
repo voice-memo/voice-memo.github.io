@@ -49,15 +49,7 @@ export class RecordStateMgr {
     });
   }
 
-  async _getImage() {
-    const canvas = document.getElementById('wave-form-canvas');
-    return new Promise(function(resolve) {
-      canvas.toBlob(function(blob) {
-        resolve(blob);
-      }, 'image/jpeg');
-    });
-  }
-  async convertToMp4() {
+  async convertToMp3() {
     const chunks = this._getChunks();
     const mp3BufferViews = [];
     for (let idx = 0; idx < this._startIndices.length; idx++) {
@@ -68,10 +60,12 @@ export class RecordStateMgr {
       const bufferView = await this._toBufferView(blob);
       mp3BufferViews.push(await this._converter.webmToMp3(await bufferView));
     }
-    const joinedBufferView = await this._converter.concatMp3(mp3BufferViews);
-    const imageBlob = await this._getImage();
-    const imageBufferView = await this._toBufferView(imageBlob);
-    const mp4BufferView = await this._converter.mp3ToMp4(joinedBufferView, imageBufferView, this.getTimeLength());
+    return await this._converter.concatMp3(mp3BufferViews);
+  }
+
+  async convertToMp4(mp3BufferView, jpegBlob) {
+    const imageBufferView = await this._toBufferView(jpegBlob);
+    const mp4BufferView = await this._converter.mp3ToMp4(mp3BufferView, imageBufferView, this.getTimeLength());
     return new Blob([mp4BufferView.buffer]);
   }
 
