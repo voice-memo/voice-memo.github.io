@@ -1,7 +1,7 @@
 import {genJpegBlob} from './image/genImage.js';
 import * as modal from './utils/modal.js';
 import * as youtube from './utils/youtubeSignIn.js';
-import { uploadFile, pollForVideoStatus } from './utils/youtubeUpload.js';
+import { uploadFile } from './utils/youtubeUpload.js';
 
 const delayToNotRecordKeyboardNoise = 400;
 const goBackDuration = 3000;
