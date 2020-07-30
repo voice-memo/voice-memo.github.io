@@ -8,7 +8,8 @@
     <link href="./index.css" rel="stylesheet" type="text/css" />
     <!-- <script type="text/javascript" src="lib/paper-full.js"></script> -->
     <script type="text/javascript" src="./lib/hotkeys.js"></script>
-    <!-- <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.8.3/dist/ffmpeg.min.js"></script> -->
+    <script src="https://apis.google.com/js/platform.js?onload=init" async defer></script>
+    <script src="./lib/cors_upload.js"></script>
 
     <script type='module' src="./indexMain.js"></script>
   </head>
@@ -26,11 +27,11 @@
     </div>
     <div id='microphone-recordings'>
     </div>
-    <div>
+    <div id='mp4-panel'>
       <button id='convert-to-mp4' style='display: none;'>Save as mp4 video (v)</button>
     </div>
     <div>
-      <input id='audio-file-input' type="file" accept="audio/webm"/>
+      <input id='audio-file-input' type="file" />
     </div>
   </body>
 </html>
