@@ -34,26 +34,34 @@ window.onload = _ => {
   new WaveFormMgr(pointerChangeSub, stateMgr, waveFormPub);
   new WaveFormDrawer(waveFormSub, document.getElementById('wave-form-canvas'), document.getElementById('right-wave-form-canvas'));
 
+  // For debugging
+  window.stateMgr = stateMgr;
+
   const fileInput = document.getElementById('audio-file-input');
   fileInput.onchange = _ => {
     if (fileInput.files.length < 1) {
       return;
     }
     const blob = fileInput.files[0];
-    const reader = new FileReader();
-    reader.readAsDataURL(blob);
-    audioChunkPub(blob);
-    // const bytesPerMs = 8;
-    // const msPerChunk = 200;
-    // const bytesPerChunk = bytesPerMs * msPerChunk;
-    // const numChunks = Math.ceil(blob.size / bytesPerChunk);
-    // for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
-    //   audioChunkPub(blob.slice(chunkIdx * bytesPerChunk, (chunkIdx + 1) * bytesPerChunk));
-    // }
-    reader.addEventListener("load", function () {
-      // convert image file to base64 string
-      console.log(reader.result);
-    }, false);
+    console.log(blob.name);
+    const fileNameParts = blob.name.split('.');
+    stateMgr.setFileFormat(fileNameParts[fileNameParts.length - 1]);
+    // This is a hack to upload by faking a recording process.
+    stateMgr.prepareToRecord();
+
+    // audioChunkPub(blob);
+    // This is just a rough under-estimate; an over-estimate is bad due to impl detail.
+    const bytesPerMs = 4;
+    const msPerChunk = 200;
+    const bytesPerChunk = bytesPerMs * msPerChunk;
+    const numChunks = Math.ceil(blob.size / bytesPerChunk);
+    for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
+      audioChunkPub(blob.slice(chunkIdx * bytesPerChunk, (chunkIdx + 1) * bytesPerChunk));
+    }
+
+    recorderStoppedPub();
+    fileInput.value = '';
+
   };
 
 };

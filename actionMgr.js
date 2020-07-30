@@ -1,5 +1,7 @@
 import {genJpegBlob} from './image/genImage.js';
 import * as modal from './utils/modal.js';
+import * as youtube from './utils/youtubeSignIn.js';
+import { uploadFile, pollForVideoStatus } from './utils/youtubeUpload.js';
 
 const delayToNotRecordKeyboardNoise = 400;
 const goBackDuration = 3000;
@@ -112,6 +114,40 @@ export class ActionMgr {
     });
   }
 
+  async upload() {
+    const mp3BufferViewPromise = this._stateMgr.convertToMp3();
+
+    const accessToken = await youtube.signIn();
+    const name = await modal.prompt('Video Title', localStorage.getItem('name'));
+    localStorage.setItem('name', name);
+    
+    const desc = await modal.prompt('Video Description', localStorage.getItem('desc'));
+    localStorage.setItem('desc', desc);
+    const tags = await modal.prompt('Tags (comma separated)', localStorage.getItem('tags'));
+    localStorage.setItem('tags', tags);
+
+    var metadata = {
+      snippet: {
+        title: name,
+        description: desc,
+        tags: tags.split(',').map(str => { return str.trim(); }),
+        categoryId: 28 // Tech
+      },
+      status: {
+        privacyStatus: 'public',
+        // privacyStatus: 'private',
+      }
+    };
+
+    const jpegBlob = await genJpegBlob(name);
+    const mp3BufferView = await mp3BufferViewPromise;
+    const mp4Blob = await this._stateMgr.convertToMp4(mp3BufferView, jpegBlob);
+    const videoId = await uploadFile(mp4Blob, accessToken, metadata, this._eBanner);
+    const link = document.createElement('a');
+    link.href = `https://www.youtube.com/watch?v=${videoId}`;
+    link.textContent = link.href;
+    document.getElementById('mp4-panel').appendChild(link);
+  }
   _shift(timeMs) {
     this._stateMgr.setCurrTime(this._stateMgr.getCurrTime() + timeMs);
   }
@@ -136,6 +172,7 @@ export class ActionMgr {
     const blob = this._stateMgr.getBlob();
     download(blob, name, 'webm');
   }
+
   async downloadMp4() {
     const prevName = localStorage.getItem('name');
 
