@@ -6,6 +6,7 @@ import { Replayer } from './replay.js';
 import {toWaveForm} from './computeWaveForm.js';
 import { WebmToMp3Converter } from '../converter/ffmpeg.js';
 
+
 // This impl assumes that we never record in the middle of a recording.
 export class RecordStateMgr {
   constructor(
@@ -172,7 +173,7 @@ export class RecordStateMgr {
 
   async _reloadAssets() {
     this._downloader.reload(this.getBlob());
-    this._reportMissingPointerTime();
+    // this._reportMissingPointerTime();
     // TODO for long recordings, use getAudioBufferInWindow
     // Also, this getAudioBuffer call should be shared with computeWaveForm.
     const audioBufferCache = await this.getCachedAudioBufferInWindow();
@@ -339,17 +340,17 @@ export class RecordStateMgr {
 
   _idxToTime(idx, warnIfInaccurate) {
     if (idx < 0 ) {
-      if (warnIfInaccurate) {
-        console.warn('inaccurate time due to index out of bound', this._pointerTimes.length, idx);
-      }
+      // if (warnIfInaccurate) {
+      //   console.warn('inaccurate time due to index out of bound', this._pointerTimes.length, idx);
+      // }
       return idx * this._msPerChunk;
     }
 
     if (idx < this._pointerTimes.length) {
       const pointerTime = this._pointerTimes[idx];
-      if (warnIfInaccurate && !pointerTime.isAccurate) {
-        console.warn('inaccurate time', idx);
-      }
+      // if (warnIfInaccurate && !pointerTime.isAccurate) {
+      //   console.warn('inaccurate time', idx);
+      // }
       return pointerTime.chunkStartTime;
     }
 
@@ -434,7 +435,10 @@ class AudioBufferCache {
     if (this.content && this.actualStartTime - 1 <= startTime && endTime <= this.actualEndTime + 1 && this.chunkLen == currChunkLen) {
       return;
     }
+    const s = Date.now();
     const bufRes = await stateMgr.getAudioBufferInWindow(startTime);
+    console.log('duration', (Date.now() - s) / 1000);
+
     this.content = bufRes.content;
     this.actualStartTime = bufRes.actualStartTime;
     this.actualEndTime = bufRes.actualStartTime + bufRes.content.duration * 1000;
