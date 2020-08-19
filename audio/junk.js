@@ -162,3 +162,11 @@ function createAudioElement(blobUrl, microphoneRecordingsHtml) {
 //   // Do something with the data, e.g. convert it to WAV
 //   console.log(e.inputBuffer);
 // };
+
+    // const bytesPerMs = 8;
+    // const msPerChunk = 200;
+    // const bytesPerChunk = bytesPerMs * msPerChunk;
+    // const numChunks = Math.ceil(blob.size / bytesPerChunk);
+    // for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
+    //   audioChunkPub(blob.slice(chunkIdx * bytesPerChunk, (chunkIdx + 1) * bytesPerChunk));
+    // }

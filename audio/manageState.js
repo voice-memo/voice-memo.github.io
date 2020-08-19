@@ -1,4 +1,4 @@
-import * as pubSub from '/utils/pubSub.js'
+import * as pubSub from '../utils/pubSub.js'
 import {AudioRecorder} from './record.js';
 import {RecordState} from './state.js';
 import { Downloader } from './download.js';
@@ -6,16 +6,19 @@ import { Replayer } from './replay.js';
 import {toWaveForm} from './computeWaveForm.js';
 import { WebmToMp3Converter } from '../converter/ffmpeg.js';
 
+
 // This impl assumes that we never record in the middle of a recording.
 export class RecordStateMgr {
   constructor(
     audioCtx, pointerChangePub, recorderStoppedPub, recorderStoppedSub,
-    audioChunkPub, audioChunkSub, microphoneRecordingsHtml) {
+    audioChunkPub, audioChunkSub, microphoneRecordingsHtml, waveFormCanvas) {
     this._audioCtx = audioCtx;
+    this._waveFormCanvas = waveFormCanvas;
     // TODO: _pointerChangeSub should really be genWaveFormSub.
     this._pointerChangePub = pointerChangePub;
 
     this._mimeType = 'audio/webm;codecs=opus';
+    this._fileFormat = 'webm';
     // There is a risk of error from decoding if we make this smaller.
     this._msPerChunk = 100;
 
@@ -30,9 +33,11 @@ export class RecordStateMgr {
     // Note: this._chunkPointerIdx < this._pointerTimes.length (this._pointerTimes.length + 1 when recording).
     this._chunkPointerIdx = 0;
     this._pointerTimes = [new PointerTime(0, /* isAccurate */ true)];
-    this._startIndices = [];
-    this._audioBufferCache = new AudioBufferCache();
+    this._startIndices = [0];
+    this._audioBufferBuilder = new AudioBufferBuilder(audioCtx);
+    this._audioBufferBuilderChunkLen = 0;
     this._converter = new WebmToMp3Converter();
+    this._audioBufferReloadQueue = [];
 
     chunkRecordedSub(_ => {
       this._setChunkPointerIdxAndPub(this.getChunkLength());
@@ -49,30 +54,29 @@ export class RecordStateMgr {
     });
   }
 
+  setFileFormat(fileFormat) {
+    this._fileFormat = fileFormat;
+  }
+
   async convertToMp3() {
     const chunks = this._getChunks();
     const mp3BufferViews = [];
     for (let idx = 0; idx < this._startIndices.length; idx++) {
       const startIdx = this._startIndices[idx];
       const endIdx = idx + 1 == this._startIndices.length ? chunks.length : this._startIndices[idx + 1];
-      console.log(startIdx, endIdx, chunks.slice(startIdx, endIdx));
       const blob = this._toBlob(chunks.slice(startIdx, endIdx));
-      const bufferView = await this._toBufferView(blob);
-      mp3BufferViews.push(await this._converter.webmToMp3(await bufferView));
+      const bufferView = await _toBufferView(blob);
+      mp3BufferViews.push(await this._converter.toMp3(await bufferView, this._fileFormat));
     }
     return await this._converter.concatMp3(mp3BufferViews);
   }
 
   async convertToMp4(mp3BufferView, jpegBlob) {
-    const imageBufferView = await this._toBufferView(jpegBlob);
+    const imageBufferView = await _toBufferView(jpegBlob);
     const mp4BufferView = await this._converter.mp3ToMp4(mp3BufferView, imageBufferView, this.getTimeLength());
     return new Blob([mp4BufferView.buffer]);
   }
 
-  async _toBufferView(blob) {
-    const arrayBuffer = await blob.arrayBuffer();
-    return new Uint8Array(arrayBuffer);
-  }
   goToPrevStart() {
     if (this._startIndices.length == 0) {
       this.setCurrTime(0);
@@ -107,27 +111,26 @@ export class RecordStateMgr {
   }
 
   async _computeGoodPickups() {
-    const audioBufferCache = await this.getCachedAudioBufferInWindow();
-    const audioBuffer = audioBufferCache.content;
+    // const audioBufferCache = await this.getCachedAudioBufferInWindow();
+    // const actualStartTime = audioBufferCache.actualStartTime;
+    // const audioBuffer = audioBufferCache.content;
+    const audioBuffer = await this.getAudioBuffer();
     const msPerBar = 100;
     const bufferDurationMs = audioBuffer.duration * 1000;
     const numBars = bufferDurationMs / msPerBar;
-    const actualStartTime = audioBufferCache.actualStartTime;
-    const timeToIdx = time => {
-      const idx = Math.floor((time - actualStartTime) / msPerBar);
-      return Math.max(0, idx);
-    };
     const idxToTime = idx => {
-      return actualStartTime + idx * msPerBar;
+      return idx * msPerBar;
+      // return actualStartTime + idx * msPerBar;
     };
     const goodPickups = [];
     const waveform = toWaveForm(audioBuffer, numBars);
     let consecutiveNumSilences = 0;
     for (let idx = waveform.length - 1; idx >= 0; idx--) {
+      console.log(waveform[idx]);
       if (waveform[idx] < 0.01) {
         consecutiveNumSilences++;
       } else {
-        if (consecutiveNumSilences > 6) {
+        if (consecutiveNumSilences > 4) {
           goodPickups.push(idxToTime(idx + 2));
         }
         consecutiveNumSilences = 0;
@@ -164,17 +167,90 @@ export class RecordStateMgr {
     this.setCurrTime(this.getTimeLength());
   }
 
-  async _reloadAssets() {
-    this._downloader.reload(this.getBlob());
-    this._reportMissingPointerTime();
-    // TODO for long recordings, use getAudioBufferInWindow
-    // Also, this getAudioBuffer call should be shared with computeWaveForm.
-    const audioBufferCache = await this.getCachedAudioBufferInWindow();
-    this._replayer.reload(audioBufferCache.content);
-    // Redraw wave form.
-    this._pointerChangePub(this.getCurrTime(true), /* ignoreTheLock */ true);
+  atTail() {
+    return this._chunkPointerIdx == this.getChunkLength();
   }
 
+  async _reloadAudioBuffer() {
+    while (true) {
+      // Always reload the last of the start indices, because it may have been trimmed.
+      if (this._audioBufferBuilder.getNumBuffers() < this._startIndices.length) {
+        break;
+      }
+      this._audioBufferBuilder.pop();
+    }
+    for (let startIndicesIdx = this._audioBufferBuilder.getNumBuffers(); startIndicesIdx < this._startIndices.length; startIndicesIdx++) {
+      const isFinal = startIndicesIdx + 1 == this._startIndices.length;
+      const startIdx = this._startIndices[startIndicesIdx];
+      const chunks = this._getChunks().slice(
+        startIdx,
+        isFinal ? this.getChunkLength() : this._startIndices[startIndicesIdx + 1]);
+      const audioBuffer = await this._toAudioBuffer(this._toBlob(chunks));
+      this._audioBufferBuilder.append(audioBuffer);
+
+      if (isFinal) {
+        this._updatePointerTimes(this.getChunkLength(), audioBuffer.duration * 1000, startIdx);
+      }
+    }
+  }
+
+  _updatePointerTimes(pointerIdxToUpdate, relativeDurationMs, startIdx) {
+    const knownTimeIdx = this._pointerTimes.length - 1;
+    const knownTime = this._pointerTimes[knownTimeIdx].chunkStartTime;
+    for (let idx = this._pointerTimes.length; idx <= pointerIdxToUpdate; idx++) {
+      this._pointerTimes.push(new PointerTime(knownTime + (idx - knownTimeIdx) * this._msPerChunk));
+    }
+    this._pointerTimes[pointerIdxToUpdate] = new PointerTime(
+      relativeDurationMs + this._pointerTimes[startIdx].chunkStartTime,
+      /* isAccurate */ true,
+    );
+  }
+
+  async _reloadAssets() {
+    this._downloader.reload(this.getBlob());
+    // this._reportMissingPointerTime();
+    this._replayer.reload(await this.getAudioBuffer());
+    this._forceWaveformRedraw();
+  }
+
+  async getAudioBuffer() {
+    if (this.getChunkLength() == this._audioBufferBuilderChunkLen) {
+      return this._audioBufferBuilder.getAudioBuffer();
+    }
+
+    const promise = new Promise((resolve, err) => {
+      this._audioBufferReloadQueue.push({resolve: resolve, err: err});
+    });
+    if (this._audioBufferReloadQueue.length > 1) {
+      console.log('_audioBufferReloadQueue.length', this._audioBufferReloadQueue.length);
+      return promise;
+    }
+    const startTime = Date.now();
+    try {
+      await this._reloadAudioBuffer();
+    } catch (error) {
+      this._audioBufferReloadQueue.forEach(resolveOrErr => {
+        resolveOrErr.err(error);
+      });
+      this._audioBufferReloadQueue = [];
+      throw error;
+    }
+    this._audioBufferBuilderChunkLen = this.getChunkLength();
+    if (Math.random() < .02) {
+      console.log('latency in ms', Date.now() - startTime);
+    }
+
+    this._audioBufferReloadQueue.forEach(resolveOrErr => {
+      const audioBuffer = this._audioBufferBuilder.getAudioBuffer();
+      resolveOrErr.resolve(audioBuffer);
+    });
+    this._audioBufferReloadQueue = [];
+    return promise;
+  }
+
+  _forceWaveformRedraw() {
+    this._pointerChangePub(this.getCurrTime(true), /* ignoreTheLock */ true);
+  }
   _reportMissingPointerTime() {
     const inaccurate = this._pointerTimes.filter(time => {
       return !time.isAccurate;
@@ -206,29 +282,51 @@ export class RecordStateMgr {
   }
 
   async startRecording() {
-    this.trimRight(true);
-    const chunkLen = this.getChunkLength();
-    this._startIndices = this._startIndices.filter(idx => {
-      return idx < chunkLen;
-    });
-    this._startIndices.push(chunkLen);
+    this.prepareToRecord();
     await this._audioRecorder.start();
+    this._waveFormCanvas.style.backgroundColor = 'maroon';
   }
 
-  async trimRight(skipReload) {
+  async prepareToRecord() {
+    await this.trimRight(/*skipFullReload*/true);
+    const chunkLen = this.getChunkLength();
+    if (chunkLen > 0) {
+      this._startIndices.push(chunkLen);
+    }
+  }
+
+  async trimRight(skipFullReload) {
     const chunks = this._getChunks();
     if (chunks.length == this._chunkPointerIdx) {
       return;
     }
+    
     this._state.setChunks(chunks.slice(0, this._chunkPointerIdx));
-    if (skipReload) {
+    const chunkLen = this.getChunkLength();
+    // Keep the very first pointer Time and start index.
+    this._pointerTimes = this._pointerTimes.slice(0, Math.max(1, chunkLen));
+    this._startIndices = this._startIndices.filter(idx => {
+      return idx < Math.max(1, chunkLen);
+    });
+    // If we are too close to the previous start index, need to continue trimming._
+    if (this._chunkPointerIdx - 1 == this._startIndices[this._startIndices.length - 1]) {
+      this._chunkPointerIdx = this._ensureIdxInRange(this._chunkPointerIdx - 1);
+      this.trimRight(skipFullReload);
       return;
     }
-    await this._reloadAssets();
+    // Reload the buffers.
+    await this.getAudioBuffer();
+    if (skipFullReload) {
+      return;
+    }
+    await this._reloadAssets(skipFullReload);
   }
 
   async stopRecording() {
     await this._audioRecorder.stop();
+    this._waveFormCanvas.style.backgroundColor = 'black';
+    // A hack to detect when things (e.g. _pointerTimes) are updated.
+    await this.getAudioBuffer();
   }
 
   isRecording() {
@@ -247,46 +345,9 @@ export class RecordStateMgr {
     return this._idxToTime(this.getChunkLength());
   }
 
-  async getCachedAudioBufferInWindow(startTime) {
-    startTime = startTime || 0;
-    await this._audioBufferCache.loadAudioBuffer(this, startTime, this.getTimeLength());
-    return this._audioBufferCache;
-  }
-
-  async getAudioBufferInWindow(startTime) {
-    const res = this._getBlobInWindow(startTime);
-    const buffer = await res.blob.arrayBuffer();
-    // Note that this can error out when res.chunks.length < 2 due to decodeAudioData magic.
-    const audioBuffer = await this._audioCtx.decodeAudioData(buffer);
-    res.content = audioBuffer;
-
-    // Hack: update pointerTimes here to save computing resources.
-    // TODO: move this elsewhere, so we are not tied to computeWaveForm
-    // to call this at the right time; e.g. use insert a audioBufferPubSub proxy between
-    // pointerChangeSub and computeWaveForm.
-    const pointerIdxToUpdate = res.goodStartIdx + res.chunks.length;
-    
-    const knownTimeIdx = this._pointerTimes.length - 1;
-    const knownTime = this._pointerTimes[knownTimeIdx].chunkStartTime;
-    for (let idx = this._pointerTimes.length; idx <= pointerIdxToUpdate; idx++) {
-      this._pointerTimes.push(new PointerTime(knownTime + (idx - knownTimeIdx) * this._msPerChunk));
-    }
-    this._pointerTimes[pointerIdxToUpdate] = new PointerTime(
-      audioBuffer.duration * 1000 + res.actualStartTime,
-      /* isAccurate */ true,
-    );
-    return res;
-  }
-
   getBlob() {
     const chunks = this._getChunks();
     return this._toBlob(chunks);
-  }
-
-  _getBlobInWindow(startTime) {
-    const res = this._getChunksInWindow(startTime);
-    res.blob = this._toBlob(res.chunks);
-    return res;
   }
  
   _getGoodIdx(startIdx) {
@@ -301,23 +362,6 @@ export class RecordStateMgr {
     return goodIdx;
   }
 
-  _getChunksInWindow(startTime) {
-    const chunks = this._state.getChunks();
-    const startIdx = isNaN(startTime) ? 0 : this._timeToIdx(startTime);
-    const goodStartIdx = this._getGoodIdx(startIdx);
-    const actualStartTime = this._idxToTime(goodStartIdx);
-    const endIdx = this.getChunkLength();
-    const res = chunks.slice(goodStartIdx, endIdx);
-    if (res.length == 0) {
-      throw 'Empty chunks for the given time window';
-    }
-    return {
-      chunks: res,
-      actualStartTime: actualStartTime,
-      goodStartIdx: goodStartIdx,
-    };
-  }
-
   _getChunks() {
     return this._state.getChunks();
   }
@@ -328,18 +372,18 @@ export class RecordStateMgr {
   }
 
   _idxToTime(idx, warnIfInaccurate) {
-    if (idx < 0 ) {
-      if (warnIfInaccurate) {
-        console.warn('inaccurate time due to index out of bound', this._pointerTimes.length, idx);
-      }
+    if (idx <= 0 || this._pointerTimes.length == 0 ) {
+      // if (warnIfInaccurate) {
+      //   console.warn('inaccurate time due to index out of bound', this._pointerTimes.length, idx);
+      // }
       return idx * this._msPerChunk;
     }
 
     if (idx < this._pointerTimes.length) {
       const pointerTime = this._pointerTimes[idx];
-      if (warnIfInaccurate && !pointerTime.isAccurate) {
-        console.warn('inaccurate time', idx);
-      }
+      // if (warnIfInaccurate && !pointerTime.isAccurate) {
+      //   console.warn('inaccurate time', idx);
+      // }
       return pointerTime.chunkStartTime;
     }
 
@@ -352,6 +396,7 @@ export class RecordStateMgr {
     let wantIdx = roughBinarySearch(this._pointerTimes, timeMs, pointerTime => {
       return pointerTime.chunkStartTime;
     });
+
     // See if we need to round up instead of down.
     if (wantIdx + 1 < this._pointerTimes.length) {
       const leftDiff = Math.abs(timeMs - this._pointerTimes[wantIdx].chunkStartTime);
@@ -377,8 +422,18 @@ export class RecordStateMgr {
   _toBlob(chunks) {
     return new Blob(chunks, { type: this._mimeType });
   }
+
+  async _toAudioBuffer(blob) {
+    const buffer = await blob.arrayBuffer();
+    // Note that this can error out when res.chunks.length < 2 due to decodeAudioData magic.
+    return await this._audioCtx.decodeAudioData(buffer);
+  }
 }
 
+async function _toBufferView(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
 
 class PointerTime {
   constructor(chunkStartTime, isAccurate) {
@@ -410,24 +465,58 @@ function roughBinarySearch(items, value, itemToValFunc){
   return Math.max(0, middleIndex);
 }
 
-class AudioBufferCache {
-  constructor() {
-     this.content = null;
-     this.actualStartTime = 0;
-     this.actualEndTime = 0;
-     this.chunkLen = 0;
+class AudioBufferBuilder {
+  constructor(audioCtx) {
+    this._audioCtx = audioCtx;
+    this._audioBuffers = [];
   }
-  async loadAudioBuffer(stateMgr, startTime, endTime) {
-    startTime = Math.max(0, startTime);
-    // The cached version is sufficient; no need to load.
-    const currChunkLen = stateMgr.getChunkLength();
-    if (this.content && this.actualStartTime - 1 <= startTime && endTime <= this.actualEndTime + 1 && this.chunkLen == currChunkLen) {
-      return;
-    }
-    const bufRes = await stateMgr.getAudioBufferInWindow(startTime);
-    this.content = bufRes.content;
-    this.actualStartTime = bufRes.actualStartTime;
-    this.actualEndTime = bufRes.actualStartTime + bufRes.content.duration * 1000;
-    this.chunkLen = currChunkLen;
+  append(audioBuffer) {
+    this._audioBuffers.push(audioBuffer);
   }
+  pop() {
+    this._audioBuffers.pop();
+  }
+  getNumBuffers() {
+    return this._audioBuffers.length;
+  }
+  getAudioBuffer() {
+    return mergeBuffers(this._audioCtx, this._audioBuffers);
+  }
+  reset() {
+    this._audioBuffers = [];
+  }
+
 }
+
+/**
+ * Merge buffers, assuming numOfChannels are the same for all buffers,
+ * with the sample rate being that of the audio context's.
+ * https://stackoverflow.com/a/14148125/2191332
+ * 
+ */
+function mergeBuffers(audioCtx, buffers) {
+  if (buffers.length == 0) {
+    return audioCtx.createBuffer(/*channels*/1, /*bufferLength*/1, audioCtx.sampleRate);
+  }
+  // let totalDuration = 0;
+  let frameCounts = 0;
+  for(let a=0; a<buffers.length; a++){
+      // totalDuration += buffers[a].duration;// Get the total duration of the new buffer when every buffer will be added/concatenated
+      frameCounts += buffers[a].getChannelData(0).length;
+  }
+  const numberOfChannels = buffers[0].numberOfChannels;
+  // Note frameCounts == Math.ceil(audioCtx.sampleRate * totalDuration)
+  const res = audioCtx.createBuffer(
+    numberOfChannels, frameCounts, audioCtx.sampleRate);
+  for (let b=0; b<numberOfChannels; b++) {
+    let channel = res.getChannelData(b);
+    let dataIndex = 0;
+    
+    for(let c = 0; c < buffers.length; c++) {
+      channel.set(buffers[c].getChannelData(b), dataIndex);
+      dataIndex+=buffers[c].length;// Next position where we should store the next buffer values
+    }
+  }
+  return res;
+}
+

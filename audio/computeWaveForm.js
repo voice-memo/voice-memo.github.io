@@ -15,16 +15,25 @@ export class WaveFormMgr {
          if (!ignoreTheLock) {
             locked = true;
          }
-         let cache;
+         // let cache;
+         // try {
+         //    cache = await stateMgr.getCachedAudioBufferInWindow(inaccurateCurrTime - msPerWindow);
+         // } finally {
+         //    if (!ignoreTheLock) {
+         //       locked = false;
+         //    }
+         // }
+         // const audioBuffer = cache.content;
+         // const actualStartTime = cache.actualStartTime;
+         let audioBuffer;
          try {
-            cache = await stateMgr.getCachedAudioBufferInWindow(inaccurateCurrTime - msPerWindow);
+            audioBuffer = await stateMgr.getAudioBuffer();
          } finally {
             if (!ignoreTheLock) {
                locked = false;
             }
          }
-         const audioBuffer = cache.content;
-         const actualStartTime = cache.actualStartTime;
+         const actualStartTime = 0;
 
          const bufferDurationMs = audioBuffer.duration * 1000;
          let res = [];

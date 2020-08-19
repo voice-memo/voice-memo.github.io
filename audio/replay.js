@@ -72,6 +72,7 @@ export class Replayer {
   _loadSourceNode() {
     this._sourceNode = this._audioCtx.createBufferSource();
     this._sourceNode.buffer = this._audioBuffer;
+    console.log(this._audioBuffer);
     this._sourceNode.connect(this._audioCtx.destination);
     this._sourceNode.onended = evt => {
       this._cleanUpOnPause(this.getCurrTimeMs());

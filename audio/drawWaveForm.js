@@ -1,10 +1,9 @@
 // https://css-tricks.com/making-an-audio-waveform-visualizer-with-vanilla-javascript/
 
 export class WaveFormDrawer {
-  constructor(waveFormSub, leftCanvas) {
-
+  constructor(waveFormSub, waveFormCanvas) {
     waveFormSub(res => {
-        draw(leftCanvas, res);
+        draw(waveFormCanvas, res);
     });
   }
 }

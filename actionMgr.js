@@ -3,7 +3,7 @@ import * as modal from './utils/modal.js';
 import * as youtube from './utils/youtubeSignIn.js';
 import { uploadFile } from './utils/youtubeUpload.js';
 
-const delayToNotRecordKeyboardNoise = 400;
+const delayToNotRecordKeyboardNoise = 300;
 const goBackDuration = 3000;
 const tinyDuration = 200;
 
@@ -25,12 +25,9 @@ export class ActionMgr {
       this._stateMgr.goToNextPause();
     });
   }
-
-  replayAndRecord() {
+  peekBackAndRecord() {
     if (this._startRecordingTimeout) {
-      window.clearTimeout(this._startRecordingTimeout);
-      this._stateMgr.pauseReplaying();
-      this._eBanner.success('Cancelled start of recording.');
+      this._cancelDelayedRecording();
       return;
     }
     this._handleReplayGracefully(async _ => {
@@ -41,8 +38,26 @@ export class ActionMgr {
     }, /* doNotRestartReplayer */ true);
   }
 
+  peekBack() {
+    if (this._startRecordingTimeout) {
+      this._cancelDelayedRecording();
+      return;
+    }
+    this._handleReplayGracefully(async _ => {
+      this._shift(-goBackDuration);
+      window.setTimeout(_ => {
+        this._stateMgr.pauseReplaying();
+      }, goBackDuration);
+      this._stateMgr.startReplaying();
+    }, /* doNotRestartReplayer */ true);
+  }
+
   // Should stop any recording and play from the start of the newest recording.
   async pauseOrResumeReplay() {
+    if (this._startRecordingTimeout) {
+      this._cancelDelayedRecording();
+      return;
+    }
     if (this._stateMgr.isRecording()) {
       await this._pauseRecording();
       this.goToPrevStart();
@@ -85,10 +100,18 @@ export class ActionMgr {
       window.clearTimeout(this._startRecordingTimeout);
     }
     this._startRecordingTimeout = window.setTimeout(_ => {
+      this._startRecordingTimeout = null;
       this._eBanner.success('Recording.');
       this._stateMgr.startRecording();
-      this._startRecordingTimeout = null;
     }, duration - 20);  // 20ms early to compensate for startRecording latency
+  }
+
+  _cancelDelayedRecording() {
+    window.clearTimeout(this._startRecordingTimeout);
+    this._startRecordingTimeout = null;
+    this._stateMgr.pauseReplaying();
+    this._eBanner.success('Cancelled start of recording.');
+    return;
   }
 
   goToDecimal(decimal) {
@@ -115,9 +138,10 @@ export class ActionMgr {
   }
 
   async upload() {
-    const mp3BufferViewPromise = this._stateMgr.convertToMp3();
-
     const accessToken = await youtube.signIn();
+    this._eBanner.success('Signed in.');
+
+    const mp3BufferViewPromise = this._stateMgr.convertToMp3();
     const name = await modal.prompt('Video Title', localStorage.getItem('name'));
     localStorage.setItem('name', name);
     
@@ -128,7 +152,7 @@ export class ActionMgr {
 
     var metadata = {
       snippet: {
-        title: name,
+        title: name.split('\n').join(' '),
         description: desc,
         tags: tags.split(',').map(str => { return str.trim(); }),
         categoryId: 28 // Tech
@@ -149,7 +173,22 @@ export class ActionMgr {
     document.getElementById('mp4-panel').appendChild(link);
   }
   _shift(timeMs) {
-    this._stateMgr.setCurrTime(this._stateMgr.getCurrTime() + timeMs);
+    if (timeMs == 0) {
+      return;
+    }
+    const oldTime = this._stateMgr.getCurrTime();
+    this._stateMgr.setCurrTime(oldTime + timeMs);
+    let more = 1;
+    while (this._stateMgr.getCurrTime() == oldTime)  {
+      if (timeMs > 0 && oldTime >= this._stateMgr.getTimeLength()) {
+        return;
+      }
+      if (timeMs < 0 && oldTime <= 0) {
+        return;
+      }
+      this._stateMgr.setCurrTime(oldTime + timeMs + more * 100 * Math.sign(timeMs));
+      more++;
+    }
   }
 
   async trimRight() {
@@ -160,12 +199,15 @@ export class ActionMgr {
 
   delete() {
     this._handleReplayGracefully(async _ => {
-      this._shift(-tinyDuration);
+      if (this._stateMgr.atTail()) {
+        this._shift(-tinyDuration);
+      }
       await this._stateMgr.trimRight();
     });
   }
   downloadAudio() {
-    const name = prompt('Name', 'audio');
+    const name = prompt('Name', localStorage.getItem('audioName') || 'audio');
+    localStorage.setItem('audioName', name);
     if (!name) {
       return;
     }
