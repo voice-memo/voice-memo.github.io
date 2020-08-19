@@ -22,23 +22,24 @@ window.onload = _ => {
     currentTimeHtml.textContent = `${Math.floor(time / 100) / 10}s`;
   });
 
+  const waveFormCanvas = document.getElementById('wave-form-canvas');
   const stateMgr = new RecordStateMgr(
     audioCtx, pointerChangePub, recorderStoppedPub, recorderStoppedSub,
     audioChunkPub, audioChunkSub,
-    microphoneRecordingsHtml);
+    microphoneRecordingsHtml, waveFormCanvas);
   const eBanner = banner.setup();
   const actionMgr = new ActionMgr(eBanner, stateMgr);
   new KeyboardShortcuts(actionMgr);
   new MouseShortcuts(actionMgr);
 
   new WaveFormMgr(pointerChangeSub, stateMgr, waveFormPub);
-  new WaveFormDrawer(waveFormSub, document.getElementById('wave-form-canvas'), document.getElementById('right-wave-form-canvas'));
+  new WaveFormDrawer(waveFormSub, waveFormCanvas);
 
   // For debugging
   window.stateMgr = stateMgr;
 
   const fileInput = document.getElementById('audio-file-input');
-  fileInput.onchange = _ => {
+  fileInput.onchange = async _ => {
     if (fileInput.files.length < 1) {
       return;
     }
@@ -47,17 +48,17 @@ window.onload = _ => {
     const fileNameParts = blob.name.split('.');
     stateMgr.setFileFormat(fileNameParts[fileNameParts.length - 1]);
     // This is a hack to upload by faking a recording process.
-    stateMgr.prepareToRecord();
+    await stateMgr.prepareToRecord();
 
-    // audioChunkPub(blob);
+    audioChunkPub(blob);
     // This is just a rough under-estimate; an over-estimate is bad due to impl detail.
-    const bytesPerMs = 4;
-    const msPerChunk = 200;
-    const bytesPerChunk = bytesPerMs * msPerChunk;
-    const numChunks = Math.ceil(blob.size / bytesPerChunk);
-    for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
-      audioChunkPub(blob.slice(chunkIdx * bytesPerChunk, (chunkIdx + 1) * bytesPerChunk));
-    }
+    // const bytesPerMs = 4;
+    // const msPerChunk = 200;
+    // const bytesPerChunk = bytesPerMs * msPerChunk;
+    // const numChunks = Math.ceil(blob.size / bytesPerChunk);
+    // for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
+    //   audioChunkPub(blob.slice(chunkIdx * bytesPerChunk, (chunkIdx + 1) * bytesPerChunk));
+    // }
 
     recorderStoppedPub();
     fileInput.value = '';

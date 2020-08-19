@@ -10,8 +10,9 @@ export class WebmToMp3Converter {
   }
 
   // Returns: the resulting Uint8Array buffer view.
-  async webmToMp3(uint8ArrayBufferView) {
-    const inputFileName = 'audio.webm';
+  async toMp3(uint8ArrayBufferView, inputFormat) {
+    inputFormat = inputFormat || 'webm';
+    const inputFileName = `audio.${inputFormat}`;
     // const args = `-i ${inputFileName} -c:v mpeg4 -b:v 6400k -strict experimental output.mp4`;
     const args= `-i ${inputFileName} -b:a 192K -vn out.mp3`;
     // const args= '-help';
@@ -102,6 +103,7 @@ export class WebmToMp3Converter {
       this._resolveFuncForWorkDone = resolve;
       this._errFuncForWorkDone = err;
     });
+    console.log('Executing', msg);
     this._worker.postMessage(msg);
     return promiseToFinish;
   }
@@ -145,3 +147,6 @@ export class WebmToMp3Converter {
     return promiseToBeReady;
   }
 }
+
+// TODO parse the time= part to measure and display progress.
+// stderr : frame=    1 fps=0.0 q=0.0 size=   15104kB time=00:16:21.15 bitrate= 126.1kbits/s speed= 5.3x  

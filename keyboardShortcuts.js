@@ -9,6 +9,9 @@ export class KeyboardShortcuts {
     //   actionMgr.shift(-goBackDuration)
     //   actionMgr.pauseOrResumeReplay();
     // });
+    _hotkeys(`u`, _ => {
+      actionMgr.upload();
+    })
     _hotkeys(`v`, _ => {
       actionMgr.downloadMp4();
     });
@@ -16,7 +19,10 @@ export class KeyboardShortcuts {
       actionMgr.pauseOrResumeRecording();
     });
     _hotkeys(`\\`, _ => {
-      actionMgr.replayAndRecord();
+      actionMgr.peekBackAndRecord();
+    });
+    _hotkeys(`'`, _ => {
+      actionMgr.peekBack();
     });
     _hotkeys(`left`, _ => {
       actionMgr.shiftEvenDuringReplay(-200);
