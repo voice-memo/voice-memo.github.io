@@ -6,7 +6,7 @@ export class MouseShortcuts {
       actionMgr.pauseOrResumeRecording();
     }
     document.getElementById('preview-and-record').onclick = _ => {
-      actionMgr.replayAndRecord();
+      actionMgr.peekBackAndRecord();
     }
     document.getElementById('go-to-previous-pause').onclick = _ => {
       actionMgr.goToPrevPause();
