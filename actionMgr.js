@@ -144,6 +144,8 @@ export class ActionMgr {
     const mp3BufferViewPromise = this._stateMgr.convertToMp3();
     const name = await modal.prompt('Video Title', localStorage.getItem('name'));
     localStorage.setItem('name', name);
+    const caption = await modal.prompt('Video Caption', localStorage.getItem('caption'));
+    localStorage.setItem('caption', caption);
     
     const desc = await modal.prompt('Video Description', localStorage.getItem('desc'));
     localStorage.setItem('desc', desc);
@@ -163,7 +165,7 @@ export class ActionMgr {
       }
     };
 
-    const jpegBlob = await genJpegBlob(name);
+    const jpegBlob = await genJpegBlob(caption);
     const mp3BufferView = await mp3BufferViewPromise;
     const mp4Blob = await this._stateMgr.convertToMp4(mp3BufferView, jpegBlob);
     const videoId = await uploadFile(mp4Blob, accessToken, metadata, this._eBanner);
