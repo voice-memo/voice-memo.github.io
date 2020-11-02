@@ -7,6 +7,13 @@
   background-color: gray;
 }
 
+#image-file-input {
+  font-size:15px;
+  color: aliceblue;
+  padding: 5px;
+  background-color: lightgray;
+}
+
 #replayer-control {
   font-size:15px;
   padding: 5px;
