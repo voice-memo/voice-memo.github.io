@@ -15,6 +15,24 @@ export async function genJpegBlob(text, width, height) {
     }, 'image/jpeg');
   });
 }
+
+export async function genJpegBlobFromImg(imgHtml) {
+  const width = 1920;
+  const height =  1080;
+  const canvas = document.createElement('canvas');
+
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(imgHtml, 0, 0, width, height);
+
+  return new Promise(function(resolve) {
+    canvas.toBlob(function(blob) {
+      resolve(blob);
+    }, 'image/jpeg');
+  });
+}
+
 function insertBanner(ctx, text, width, height) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = 'black';
