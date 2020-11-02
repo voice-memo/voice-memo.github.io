@@ -39,17 +39,17 @@ window.onload = _ => {
   // For debugging
   window.stateMgr = stateMgr;
 
-  const imgInput = document.getElementById('image-file-input');
-  imgInput.onchange = async _ => {
-    if (imgInput.files.length < 1) {
+  const jpegInput = document.getElementById('image-file-input');
+  jpegInput.onchange = async _ => {
+    if (jpegInput.files.length < 1) {
       actionMgr.jpegBlob = null;
       return;
     }
-    const blob = imgInput.files[0];
-    if (!blob.type.startsWith('image')) {
-      eBanner.failure('Must be an image file.');
-      imgInput.value = '';
-    }
+    const blob = jpegInput.files[0];
+    // if (blob.type !== 'image/jpeg') {
+    //   eBanner.failure('The picture must be a JPEG file.');
+    //   jpegInput.value = '';
+    // }
     // This jpeg blob fails to create a valid mp4 for unknown reasons.
     // actionMgr.jpegBlob = blob;
 
