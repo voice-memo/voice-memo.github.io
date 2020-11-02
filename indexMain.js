@@ -6,6 +6,7 @@ import { ActionMgr } from './actionMgr.js';
 import { WaveFormDrawer } from './audio/drawWaveForm.js';
 import { WaveFormMgr } from './audio/computeWaveForm.js';
 import { MouseShortcuts } from './mouseShortcuts.js';
+import { genJpegBlobFromImg } from './image/genImage.js';
 
 
 window.onload = _ => {
@@ -37,6 +38,34 @@ window.onload = _ => {
 
   // For debugging
   window.stateMgr = stateMgr;
+
+  const imgInput = document.getElementById('image-file-input');
+  imgInput.onchange = async _ => {
+    if (imgInput.files.length < 1) {
+      actionMgr.jpegBlob = null;
+      return;
+    }
+    const blob = imgInput.files[0];
+    if (!blob.type.startsWith('image')) {
+      eBanner.failure('Must be an image file.');
+      imgInput.value = '';
+    }
+    // This jpeg blob fails to create a valid mp4 for unknown reasons.
+    // actionMgr.jpegBlob = blob;
+
+    const preview = document.getElementById('uploaded-image');
+    const reader = new FileReader();
+
+    reader.addEventListener("load", async _ => {
+      // convert image file to base64 string
+      preview.src = reader.result;
+
+      actionMgr.jpegBlob = await genJpegBlobFromImg(preview);
+    }, false);
+
+    reader.readAsDataURL(blob);
+
+  }
 
   const fileInput = document.getElementById('audio-file-input');
   fileInput.onchange = async _ => {
