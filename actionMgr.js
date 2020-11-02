@@ -12,6 +12,7 @@ export class ActionMgr {
     this._eBanner = eBanner;
     this._stateMgr = stateMgr;
     this._startRecordingTimeout = null;
+    this.jpegBlob = null;
   }
 
   goToPrevPause() {
@@ -141,16 +142,23 @@ export class ActionMgr {
     const accessToken = await youtube.signIn();
     this._eBanner.success('Signed in.');
 
+    let jpegBlob = this.jpegBlob;
+    const namespace = jpegBlob ? '-withCustomImage' : '';
+
     const mp3BufferViewPromise = this._stateMgr.convertToMp3();
-    const name = await modal.prompt('Video Title', localStorage.getItem('name'));
-    localStorage.setItem('name', name);
-    const caption = await modal.prompt('Video Caption', localStorage.getItem('caption'));
-    localStorage.setItem('caption', caption);
-    
-    const desc = await modal.prompt('Video Description', localStorage.getItem('desc'));
-    localStorage.setItem('desc', desc);
-    const tags = await modal.prompt('Tags (comma separated)', localStorage.getItem('tags'));
-    localStorage.setItem('tags', tags);
+    const name = await modal.prompt('Video Title', localStorage.getItem('name' + namespace));
+    localStorage.setItem('name' + namespace, name);
+
+    if (!jpegBlob) {
+      const caption = await modal.prompt('Video Caption', localStorage.getItem('caption'));
+      localStorage.setItem('caption', caption);
+      jpegBlob = await genJpegBlob(caption);
+    }
+
+    const desc = await modal.prompt('Video Description', localStorage.getItem('desc' + namespace));
+    localStorage.setItem('desc' + namespace, desc);
+    const tags = await modal.prompt('Tags (comma separated)', localStorage.getItem('tags' + namespace));
+    localStorage.setItem('tags' + namespace, tags);
 
     var metadata = {
       snippet: {
@@ -165,7 +173,7 @@ export class ActionMgr {
       }
     };
 
-    const jpegBlob = await genJpegBlob(caption);
+    
     const mp3BufferView = await mp3BufferViewPromise;
     const mp4Blob = await this._stateMgr.convertToMp4(mp3BufferView, jpegBlob);
     const videoId = await uploadFile(mp4Blob, accessToken, metadata, this._eBanner);
@@ -224,7 +232,12 @@ export class ActionMgr {
     const mp3BufferViewPromise = this._stateMgr.convertToMp3();
     const name = await namePromise;
     localStorage.setItem('name', name);
-    const jpegBlob = await genJpegBlob(name);
+    
+    let jpegBlob = this.jpegBlob;
+    if (!jpegBlob) {
+      jpegBlob = await genJpegBlob(name);
+    }
+
     const mp3BufferView = await mp3BufferViewPromise;
     const nameWithNoSpace = name.split(' ').join('_');
     const blob = await this._stateMgr.convertToMp4(mp3BufferView, jpegBlob);
