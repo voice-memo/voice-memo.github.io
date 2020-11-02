@@ -56,9 +56,9 @@ export class WebmToMp3Converter {
 
   }
 
-  async mp3ToMp4(mp3BufferView, pngBufferView, durationMs) {
+  async mp3ToMp4(mp3BufferView, jpegBufferView, durationMs) {
     const inputFileName = 'audio.mp3';
-    const pngFileName = '1.jpg';
+    const jpegFileName = '1.jpg';
     const durationSec = durationMs / 1000;
     let frameRate = 1;
     for (let exp = 2; exp < 9; exp++) {
@@ -78,8 +78,8 @@ export class WebmToMp3Converter {
               name: inputFileName,
           },
           {
-            data: pngBufferView,
-            name: pngFileName,
+            data: jpegBufferView,
+            name: jpegFileName,
         },
       ]
     });
