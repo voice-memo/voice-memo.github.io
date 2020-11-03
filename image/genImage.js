@@ -19,7 +19,7 @@ export async function genJpegBlob(text, width, height) {
 export async function genJpegBlobFromImg(imgHtml) {
   const width = 1920;
   const height =  1080;
-  const canvas = document.createElement('canvas');
+  const canvas = document.getElementById('jpeg-canvas') || document.createElement('canvas');
 
   canvas.width = width;
   canvas.height = height;
