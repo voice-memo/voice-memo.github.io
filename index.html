@@ -34,7 +34,8 @@
     <div>
       <label for="image-file-input">Optional Picture (JPEG):</label>
       <input id='image-file-input' type="file" accept="image/jpeg" />
-      <img src="" id='uploaded-image' height="500" alt="Image preview...">
+      <img src="" id='uploaded-image' style='display: none;'>
+      <canvas id='jpeg-canvas'></canvas>
     </div>
     <div>
       <input id='audio-file-input' type="file" />
